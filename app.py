@@ -73,6 +73,7 @@ with col2:
         help="Volumen estimado que ingresará a la Planta de Tratamiento de Aguas Residuales."
     )
 
+st.markdown("---")
 # 6. Visualización Gráfica de Tendencias
 st.subheader("📈 Modelo de Regresión y Tendencia Histórica")
 
