@@ -12,7 +12,7 @@ st.set_page_config(
 )
 
 # Título principal
-st.title("💧 Sistema de Proyecciones de Agua (Planta y PTAR)")
+st.title("💧 Proyeccion de Consumo de Agua - CBA Santa Elena")
 st.markdown("---")
 
 # 1. Datos históricos reales (obtenidos de tu imagen)
@@ -41,7 +41,7 @@ modelo_ptar.fit(X, df['consumo_ptar'])
 
 # 3. Diseño de la interfaz (Barra lateral para ingresar datos)
 st.sidebar.header("⚙️ Parámetros de Hoy")
-st.sidebar.markdown("Ingrese el volumen de producción planificado para calcular las proyecciones de consumo.")
+st.sidebar.markdown("Volumen de producción hoy:")
 
 pollos_hoy = st.sidebar.number_input(
     "🍗 Número de pollos para hoy:", 
@@ -75,7 +75,7 @@ with col2:
 
 st.markdown("---")
 # 6. Visualización Gráfica de Tendencias
-st.subheader("📈 Modelo de Regresión y Tendencia Histórica")
+st.subheader("📈 Gráfico de Tendencia Histórica")
 
 fig = go.Figure()
 
