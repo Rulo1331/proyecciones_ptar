@@ -60,22 +60,18 @@ st.subheader("📊 Proyección de Consumo para Hoy")
 col1, col2 = st.columns(2)
 
 with col1:
-    st.image("https://img.icons8.com/fluency/96/factory.png", width=60)
     st.metric(
-        label="Consumo Proyectado Planta", 
+        label="🏭 Consumo Proyectado Planta", 
         value=f"{pred_planta:.2f} m³",
         help="Consumo estimado dentro de las instalaciones de procesamiento."
     )
 
 with col2:
-    st.image("https://img.icons8.com/fluency/96/water-treatment.png", width=60)
     st.metric(
-        label="Consumo Proyectado PTAR", 
+        label="♻️ Consumo Proyectado PTAR", 
         value=f"{pred_ptar:.2f} m³",
         help="Volumen estimado que ingresará a la Planta de Tratamiento de Aguas Residuales."
     )
-
-st.markdown("---")
 
 # 6. Visualización Gráfica de Tendencias
 st.subheader("📈 Modelo de Regresión y Tendencia Histórica")
