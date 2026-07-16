@@ -68,7 +68,7 @@ with col1:
 
 with col2:
     st.metric(
-        label="♻️ Consumo Proyectado PTAR", 
+        label="♻️ Volumen de Procesamiento PTAR", 
         value=f"{pred_ptar:.2f} m³",
         help="Volumen estimado que ingresará a la Planta de Tratamiento de Aguas Residuales."
     )
