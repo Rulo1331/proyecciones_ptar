@@ -113,3 +113,33 @@ st.plotly_chart(fig, use_container_width=True)
 # 7. Tabla de datos históricos para auditoría
 with st.expander("📂 Ver Registro de Datos Históricos"):
     st.dataframe(df.style.format({'consumo_planta': '{:.2f} m³', 'consumo_ptar': '{:.2f} m³', 'numero_pollos': '{:,}'}))
+
+
+
+#CONEXION DB QUERY NUBE
+
+from google.cloud import bigquery
+from google.oauth2 import service_account
+
+@st.cache_resource
+def get_bigquery_client():
+    credentials = service_account.Credentials.from_service_account_info(
+        st.secrets["gcp_service_account"]
+    )
+    return bigquery.Client(credentials=credentials, project=credentials.project_id)
+
+@st.cache_data(ttl=300)
+def run_query(sql: str) -> pd.DataFrame:
+    client = get_bigquery_client()
+    return client.query(sql).to_dataframe()
+
+# Prueba rápida
+dataset_id = st.secrets["bigquery"]["dataset_id"]
+project_id = st.secrets["gcp_service_account"]["project_id"]
+
+df = run_query(f"""
+    SELECT * FROM `{project_id}.{dataset_id}.cba_4_parametros_produccion`
+    LIMIT 100
+""")
+
+st.write(df)
