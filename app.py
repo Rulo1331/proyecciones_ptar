@@ -25,74 +25,90 @@ def get_bigquery_client():
     )
     return bigquery.Client(credentials=credentials, project=credentials.project_id)
 
-@st.cache_data(ttl=300) # Se actualiza cada 5 minutos
+@st.cache_data(ttl=120) # Reducido a 2 min para que veas los cambios más rápido
 def run_query(sql: str) -> pd.DataFrame:
     client = get_bigquery_client()
     return client.query(sql).to_dataframe()
 
-# 3. Obtención de datos históricos desde BigQuery
-@st.cache_data(ttl=300)
-def obtener_datos_historicos():
+# 3. Obtención de datos desde BigQuery
+@st.cache_data(ttl=120)
+def obtener_datos_completos():
     dataset_id = st.secrets["bigquery"]["dataset_id"]
     project_id = st.secrets["gcp_service_account"]["project_id"]
     
     sql = f"""
         SELECT 
             fecha, 
-            total_pollos, 
+            numero_pollos, 
             consumo_planta, 
-            procesamiento_ptar 
+            consumo_ptar 
         FROM `{project_id}.{dataset_id}.cba_4_parametros_produccion`
         ORDER BY fecha ASC
     """
-    df = run_query(sql)
-    
-    # Limpieza básica: Eliminar filas con valores nulos
-    df = df.dropna(subset=['total_pollos', 'consumo_planta', 'procesamiento_ptar'])
-    
-    return df
+    # Traemos todos los datos (incluyendo el de hoy incompleto)
+    df_bruto = run_query(sql)
+    return df_bruto
 
 # Cargar los datos
 try:
-    df = obtener_datos_historicos()
+    df_bruto = obtener_datos_completos()
 except Exception as e:
     st.error(f"Error al conectar con la base de datos: {e}")
     st.stop()
 
-# Verificar que hay suficientes datos
-if df.empty or len(df) < 2:
-    st.warning("No hay suficientes datos históricos en la base de datos para generar proyecciones.")
+if df_bruto.empty:
+    st.warning("La base de datos está vacía.")
     st.stop()
 
-# 4. Obtener el dato más reciente (última fila del DataFrame)
-ultimo_registro = df.iloc[-1]
-fecha_reciente = ultimo_registro['fecha']
-pollos_reciente = ultimo_registro['total_pollos']
+# 4. Separar lógica: Último registro vs Datos de entrenamiento
 
-# 5. Entrenamiento de los modelos de regresión lineal
-X = df[['total_pollos']]
+# A) Extraemos el último registro para las proyecciones (puede no tener consumos aún)
+ultimo_registro = df_bruto.iloc[-1]
+fecha_reciente = ultimo_registro['fecha']
+pollos_reciente = ultimo_registro['numero_pollos']
+
+if pd.isna(pollos_reciente):
+    st.warning(f"El registro de la fecha {fecha_reciente} no tiene número de pollos. Por favor, actualiza la base de datos.")
+    st.stop()
+
+# B) Filtramos solo los registros COMPLETOS para entrenar el modelo
+df_entrenamiento = df_bruto.dropna(subset=['numero_pollos', 'consumo_planta', 'consumo_ptar'])
+
+if len(df_entrenamiento) < 2:
+    st.warning("No hay suficientes días con datos completos (pollos + consumos) para generar el modelo.")
+    st.stop()
+
+
+# 5. Entrenamiento de los modelos de regresión lineal (Solo con datos históricos cerrados)
+X = df_entrenamiento[['numero_pollos']]
 
 # Modelo Planta
 modelo_planta = LinearRegression()
-modelo_planta.fit(X, df['consumo_planta'])
+modelo_planta.fit(X, df_entrenamiento['consumo_planta'])
 
 # Modelo PTAR
 modelo_ptar = LinearRegression()
-modelo_ptar.fit(X, df['procesamiento_ptar'])
+modelo_ptar.fit(X, df_entrenamiento['consumo_ptar'])
 
 # 6. Diseño de la interfaz (Barra lateral de solo lectura)
-st.sidebar.header("⚙️ Parámetros Actuales")
-st.sidebar.markdown("Datos obtenidos de la base de datos:")
+st.sidebar.header("⚙️ Parámetros del Día")
+st.sidebar.markdown("Datos del último registro en BD:")
 
-st.sidebar.info(f"📅 **Fecha del último registro:**\n\n{fecha_reciente}")
+st.sidebar.info(f"📅 **Fecha de evaluación:**\n\n{fecha_reciente}")
 
 st.sidebar.metric(
-    label="🍗 Número de pollos:", 
+    label="🍗 Total de pollos ingresados:", 
     value=f"{int(pollos_reciente):,}"
 )
 
+# Indicador visual de si el día ya se cerró o está en proyección
+if pd.isna(ultimo_registro['consumo_planta']) or pd.isna(ultimo_registro['consumo_ptar']):
+    st.sidebar.warning("⏳ **Estado del día:** Abierto. Esperando datos de consumo final.")
+else:
+    st.sidebar.success("✅ **Estado del día:** Cerrado. Consumos registrados.")
+
 # 7. Cálculo de Predicciones usando el dato más reciente
-X_pred = pd.DataFrame({'total_pollos': [pollos_reciente]})
+X_pred = pd.DataFrame({'numero_pollos': [pollos_reciente]})
 
 pred_planta = max(0.0, modelo_planta.predict(X_pred)[0])
 pred_ptar = max(0.0, modelo_ptar.predict(X_pred)[0])
@@ -105,14 +121,14 @@ with col1:
     st.metric(
         label="🏭 Consumo Proyectado Planta", 
         value=f"{pred_planta:.2f} m³",
-        help="Consumo estimado dentro de las instalaciones de procesamiento."
+        help="Consumo estimado dentro de las instalaciones basado en los pollos de hoy."
     )
 
 with col2:
     st.metric(
         label="♻️ Volumen de Procesamiento PTAR", 
         value=f"{pred_ptar:.2f} m³",
-        help="Volumen estimado que ingresará a la Planta de Tratamiento de Aguas Residuales."
+        help="Volumen estimado hacia la PTAR basado en los pollos de hoy."
     )
 
 st.markdown("---")
@@ -122,16 +138,16 @@ st.subheader("📈 Gráfico de Tendencia Histórica")
 
 fig = go.Figure()
 
-# Rango para dibujar la línea de regresión
-rango_x = np.linspace(0, df['total_pollos'].max() + 5000, 100)
-rango_x_df = pd.DataFrame({'total_pollos': rango_x})
+# Rango para dibujar la línea de regresión basado en los datos de entrenamiento
+rango_x = np.linspace(0, df_entrenamiento['numero_pollos'].max() + 5000, 100)
+rango_x_df = pd.DataFrame({'numero_pollos': rango_x})
 
-# Planta
-fig.add_trace(go.Scatter(x=df['total_pollos'], y=df['consumo_planta'], mode='markers', name='Histórico Planta', marker=dict(color='#1f77b4', size=10)))
+# Planta (Usamos df_entrenamiento para graficar los puntos reales)
+fig.add_trace(go.Scatter(x=df_entrenamiento['numero_pollos'], y=df_entrenamiento['consumo_planta'], mode='markers', name='Histórico Planta', marker=dict(color='#1f77b4', size=10)))
 fig.add_trace(go.Scatter(x=rango_x, y=modelo_planta.predict(rango_x_df), mode='lines', name='Línea Tendencia Planta', line=dict(color='#1f77b4', dash='dash')))
 
 # PTAR
-fig.add_trace(go.Scatter(x=df['total_pollos'], y=df['procesamiento_ptar'], mode='markers', name='Histórico PTAR', marker=dict(color='#ff7f0e', size=10)))
+fig.add_trace(go.Scatter(x=df_entrenamiento['numero_pollos'], y=df_entrenamiento['consumo_ptar'], mode='markers', name='Histórico PTAR', marker=dict(color='#ff7f0e', size=10)))
 fig.add_trace(go.Scatter(x=rango_x, y=modelo_ptar.predict(rango_x_df), mode='lines', name='Línea Tendencia PTAR', line=dict(color='#ff7f0e', dash='dash')))
 
 # Punto proyectado Actual
@@ -155,9 +171,12 @@ fig.update_layout(
 st.plotly_chart(fig, use_container_width=True)
 
 # 10. Tabla de datos históricos para auditoría
-with st.expander("📂 Ver Registro de Datos Históricos (Desde BigQuery)"):
-    st.dataframe(df.style.format({
-        'consumo_planta': '{:.2f} m³', 
-        'procesamiento_ptar': '{:.2f} m³', 
-        'total_pollos': '{:,}'
-    }))
+with st.expander("📂 Ver Registro de Datos Históricos (Incluyendo días abiertos)"):
+    # Formateo inteligente para manejar los valores Nulos/NaN
+    formato_columnas = {
+        'consumo_planta': lambda x: f"{x:.2f} m³" if pd.notnull(x) else "⏳ Pendiente",
+        'consumo_ptar': lambda x: f"{x:.2f} m³" if pd.notnull(x) else "⏳ Pendiente",
+        'numero_pollos': lambda x: f"{int(x):,}" if pd.notnull(x) else "0"
+    }
+    
+    st.dataframe(df_bruto.style.format(formato_columnas))
