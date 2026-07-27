@@ -36,9 +36,6 @@ def obtener_datos_historicos():
     dataset_id = st.secrets["bigquery"]["dataset_id"]
     project_id = st.secrets["gcp_service_account"]["project_id"]
     
-    # IMPORTANTE: Asegúrate de que los nombres de las columnas en tu base de datos 
-    # coincidan con estos, o usa "AS" para renombrarlos.
-    # Ejemplo: SELECT fecha_registro AS fecha, aves AS total_pollos...
     sql = f"""
         SELECT 
             fecha, 
@@ -50,7 +47,7 @@ def obtener_datos_historicos():
     """
     df = run_query(sql)
     
-    # Limpieza básica: Eliminar filas con valores nulos que puedan romper el modelo
+    # Limpieza básica: Eliminar filas con valores nulos
     df = df.dropna(subset=['total_pollos', 'consumo_planta', 'procesamiento_ptar'])
     
     return df
@@ -60,15 +57,19 @@ try:
     df = obtener_datos_historicos()
 except Exception as e:
     st.error(f"Error al conectar con la base de datos: {e}")
-    st.stop() # Detiene la ejecución si falla la BD
+    st.stop()
 
-# Verificar que hay suficientes datos para entrenar
+# Verificar que hay suficientes datos
 if df.empty or len(df) < 2:
     st.warning("No hay suficientes datos históricos en la base de datos para generar proyecciones.")
     st.stop()
 
-# 4. Entrenamiento de los modelos de regresión lineal
-# Asegurarnos de que las columnas son numéricas
+# 4. Obtener el dato más reciente (última fila del DataFrame)
+ultimo_registro = df.iloc[-1]
+fecha_reciente = ultimo_registro['fecha']
+pollos_reciente = ultimo_registro['total_pollos']
+
+# 5. Entrenamiento de los modelos de regresión lineal
 X = df[['total_pollos']]
 
 # Modelo Planta
@@ -79,27 +80,25 @@ modelo_planta.fit(X, df['consumo_planta'])
 modelo_ptar = LinearRegression()
 modelo_ptar.fit(X, df['procesamiento_ptar'])
 
-# 5. Diseño de la interfaz (Barra lateral para ingresar datos)
-st.sidebar.header("⚙️ Parámetros de Hoy")
-st.sidebar.markdown("Volumen de producción hoy:")
+# 6. Diseño de la interfaz (Barra lateral de solo lectura)
+st.sidebar.header("⚙️ Parámetros Actuales")
+st.sidebar.markdown("Datos obtenidos de la base de datos:")
 
-pollos_hoy = st.sidebar.number_input(
-    "🍗 Número de pollos para hoy:", 
-    min_value=0, 
-    max_value=100000, 
-    value=25000, 
-    step=500
+st.sidebar.info(f"📅 **Fecha del último registro:**\n\n{fecha_reciente}")
+
+st.sidebar.metric(
+    label="🍗 Número de pollos:", 
+    value=f"{int(pollos_reciente):,}"
 )
 
-# 6. Cálculo de Predicciones
-# Usar una matriz 2D válida para sklearn para evitar advertencias
-X_pred = pd.DataFrame({'total_pollos': [pollos_hoy]})
+# 7. Cálculo de Predicciones usando el dato más reciente
+X_pred = pd.DataFrame({'total_pollos': [pollos_reciente]})
 
 pred_planta = max(0.0, modelo_planta.predict(X_pred)[0])
 pred_ptar = max(0.0, modelo_ptar.predict(X_pred)[0])
 
-# 7. Mostrar Resultados Principales (Métricas)
-st.subheader("📊 Proyección de Consumo para Hoy")
+# 8. Mostrar Resultados Principales (Métricas)
+st.subheader(f"📊 Proyección de Consumo para el {fecha_reciente}")
 col1, col2 = st.columns(2)
 
 with col1:
@@ -118,12 +117,12 @@ with col2:
 
 st.markdown("---")
 
-# 8. Visualización Gráfica de Tendencias
+# 9. Visualización Gráfica de Tendencias
 st.subheader("📈 Gráfico de Tendencia Histórica")
 
 fig = go.Figure()
 
-# Rango para dibujar la línea de regresión (desde 0 hasta el máximo histórico + 5000)
+# Rango para dibujar la línea de regresión
 rango_x = np.linspace(0, df['total_pollos'].max() + 5000, 100)
 rango_x_df = pd.DataFrame({'total_pollos': rango_x})
 
@@ -135,12 +134,12 @@ fig.add_trace(go.Scatter(x=rango_x, y=modelo_planta.predict(rango_x_df), mode='l
 fig.add_trace(go.Scatter(x=df['total_pollos'], y=df['procesamiento_ptar'], mode='markers', name='Histórico PTAR', marker=dict(color='#ff7f0e', size=10)))
 fig.add_trace(go.Scatter(x=rango_x, y=modelo_ptar.predict(rango_x_df), mode='lines', name='Línea Tendencia PTAR', line=dict(color='#ff7f0e', dash='dash')))
 
-# Punto proyectado de Hoy
+# Punto proyectado Actual
 fig.add_trace(go.Scatter(
-    x=[pollos_hoy, pollos_hoy], 
+    x=[pollos_reciente, pollos_reciente], 
     y=[pred_planta, pred_ptar], 
     mode='markers+text', 
-    name='PREDICCIÓN HOY',
+    name='PREDICCIÓN ACTUAL',
     text=['Proyección Planta', 'Proyección PTAR'],
     textposition="top left",
     marker=dict(color='red', size=15, symbol='star')
@@ -155,9 +154,8 @@ fig.update_layout(
 
 st.plotly_chart(fig, use_container_width=True)
 
-# 9. Tabla de datos históricos para auditoría
+# 10. Tabla de datos históricos para auditoría
 with st.expander("📂 Ver Registro de Datos Históricos (Desde BigQuery)"):
-    # Convertir las fechas a un formato legible si es necesario, y dar formato a los números
     st.dataframe(df.style.format({
         'consumo_planta': '{:.2f} m³', 
         'procesamiento_ptar': '{:.2f} m³', 
