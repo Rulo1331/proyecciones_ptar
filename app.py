@@ -3,8 +3,10 @@ import pandas as pd
 import numpy as np
 from sklearn.linear_model import LinearRegression
 import plotly.graph_objects as go
+from google.cloud import bigquery
+from google.oauth2 import service_account
 
-# Configuración de la página
+# 1. Configuración de la página
 st.set_page_config(
     page_title="Proyecciones PTAR & Planta", 
     page_icon="💧", 
@@ -12,23 +14,61 @@ st.set_page_config(
 )
 
 # Título principal
-st.title("💧 Proyeccion de Consumo de Agua - CBA Santa Elena")
+st.title("💧 Proyección de Consumo de Agua - CBA Santa Elena")
 st.markdown("---")
 
-# 1. Datos históricos reales (obtenidos de tu imagen)
-@st.cache_data
+# 2. Configuración de Conexión a BigQuery
+@st.cache_resource
+def get_bigquery_client():
+    credentials = service_account.Credentials.from_service_account_info(
+        st.secrets["gcp_service_account"]
+    )
+    return bigquery.Client(credentials=credentials, project=credentials.project_id)
+
+@st.cache_data(ttl=300) # Se actualiza cada 5 minutos
+def run_query(sql: str) -> pd.DataFrame:
+    client = get_bigquery_client()
+    return client.query(sql).to_dataframe()
+
+# 3. Obtención de datos históricos desde BigQuery
+@st.cache_data(ttl=300)
 def obtener_datos_historicos():
-    data = {
-        'fecha': ['07/07/2026', '08/07/2026', '09/07/2026', '10/07/2026', '11/07/2026', '12/07/2026', '13/07/2026','14/07/2026','15/07/2026','16/07/2026'],
-        'numero_pollos': [16717, 28807, 27513, 34001, 25816, 0, 26520,25024,26022,27013],
-        'consumo_planta': [509.98, 667.88, 713.64, 797.64, 694.07, 74.84, 629.49,641.40,701.66,714.329],
-        'consumo_ptar': [677.74, 685.28, 740.40, 724.92, 691.55, 236.60, 660.57, 598.55 ,672.86,750.449]
-    }
-    return pd.DataFrame(data)
+    dataset_id = st.secrets["bigquery"]["dataset_id"]
+    project_id = st.secrets["gcp_service_account"]["project_id"]
+    
+    # IMPORTANTE: Asegúrate de que los nombres de las columnas en tu base de datos 
+    # coincidan con estos, o usa "AS" para renombrarlos.
+    # Ejemplo: SELECT fecha_registro AS fecha, aves AS numero_pollos...
+    sql = f"""
+        SELECT 
+            fecha, 
+            total_pollos, 
+            consumo_planta, 
+            procesamiento_ptar 
+        FROM `{project_id}.{dataset_id}.cba_4_parametros_produccion`
+        ORDER BY fecha ASC
+    """
+    df = run_query(sql)
+    
+    # Limpieza básica: Eliminar filas con valores nulos que puedan romper el modelo
+    df = df.dropna(subset=['numero_pollos', 'consumo_planta', 'consumo_ptar'])
+    
+    return df
 
-df = obtener_datos_historicos()
+# Cargar los datos
+try:
+    df = obtener_datos_historicos()
+except Exception as e:
+    st.error(f"Error al conectar con la base de datos: {e}")
+    st.stop() # Detiene la ejecución si falla la BD
 
-# 2. Entrenamiento de los modelos de regresión lineal
+# Verificar que hay suficientes datos para entrenar
+if df.empty or len(df) < 2:
+    st.warning("No hay suficientes datos históricos en la base de datos para generar proyecciones.")
+    st.stop()
+
+# 4. Entrenamiento de los modelos de regresión lineal
+# Asegurarnos de que las columnas son numéricas
 X = df[['numero_pollos']]
 
 # Modelo Planta
@@ -39,23 +79,26 @@ modelo_planta.fit(X, df['consumo_planta'])
 modelo_ptar = LinearRegression()
 modelo_ptar.fit(X, df['consumo_ptar'])
 
-# 3. Diseño de la interfaz (Barra lateral para ingresar datos)
+# 5. Diseño de la interfaz (Barra lateral para ingresar datos)
 st.sidebar.header("⚙️ Parámetros de Hoy")
 st.sidebar.markdown("Volumen de producción hoy:")
 
 pollos_hoy = st.sidebar.number_input(
     "🍗 Número de pollos para hoy:", 
     min_value=0, 
-    max_value=50000, 
+    max_value=100000, 
     value=25000, 
     step=500
 )
 
-# 4. Cálculo de Predicciones
-pred_planta = max(0.0, modelo_planta.predict([[pollos_hoy]])[0])
-pred_ptar = max(0.0, modelo_ptar.predict([[pollos_hoy]])[0])
+# 6. Cálculo de Predicciones
+# Usar una matriz 2D válida para sklearn para evitar advertencias
+X_pred = pd.DataFrame({'numero_pollos': [pollos_hoy]})
 
-# 5. Mostrar Resultados Principales (Métricas)
+pred_planta = max(0.0, modelo_planta.predict(X_pred)[0])
+pred_ptar = max(0.0, modelo_ptar.predict(X_pred)[0])
+
+# 7. Mostrar Resultados Principales (Métricas)
 st.subheader("📊 Proyección de Consumo para Hoy")
 col1, col2 = st.columns(2)
 
@@ -74,21 +117,23 @@ with col2:
     )
 
 st.markdown("---")
-# 6. Visualización Gráfica de Tendencias
+
+# 8. Visualización Gráfica de Tendencias
 st.subheader("📈 Gráfico de Tendencia Histórica")
 
 fig = go.Figure()
 
-# Rango para dibujar la línea de regresión
-rango_x = np.linspace(0, df['numero_pollos'].max() + 5000, 100).reshape(-1, 1)
+# Rango para dibujar la línea de regresión (desde 0 hasta el máximo histórico + 5000)
+rango_x = np.linspace(0, df['numero_pollos'].max() + 5000, 100)
+rango_x_df = pd.DataFrame({'numero_pollos': rango_x})
 
 # Planta
 fig.add_trace(go.Scatter(x=df['numero_pollos'], y=df['consumo_planta'], mode='markers', name='Histórico Planta', marker=dict(color='#1f77b4', size=10)))
-fig.add_trace(go.Scatter(x=rango_x.flatten(), y=modelo_planta.predict(rango_x), mode='lines', name='Línea Tendencia Planta', line=dict(color='#1f77b4', dash='dash')))
+fig.add_trace(go.Scatter(x=rango_x, y=modelo_planta.predict(rango_x_df), mode='lines', name='Línea Tendencia Planta', line=dict(color='#1f77b4', dash='dash')))
 
 # PTAR
 fig.add_trace(go.Scatter(x=df['numero_pollos'], y=df['consumo_ptar'], mode='markers', name='Histórico PTAR', marker=dict(color='#ff7f0e', size=10)))
-fig.add_trace(go.Scatter(x=rango_x.flatten(), y=modelo_ptar.predict(rango_x), mode='lines', name='Línea Tendencia PTAR', line=dict(color='#ff7f0e', dash='dash')))
+fig.add_trace(go.Scatter(x=rango_x, y=modelo_ptar.predict(rango_x_df), mode='lines', name='Línea Tendencia PTAR', line=dict(color='#ff7f0e', dash='dash')))
 
 # Punto proyectado de Hoy
 fig.add_trace(go.Scatter(
@@ -110,36 +155,11 @@ fig.update_layout(
 
 st.plotly_chart(fig, use_container_width=True)
 
-# 7. Tabla de datos históricos para auditoría
-with st.expander("📂 Ver Registro de Datos Históricos"):
-    st.dataframe(df.style.format({'consumo_planta': '{:.2f} m³', 'consumo_ptar': '{:.2f} m³', 'numero_pollos': '{:,}'}))
-
-
-
-#CONEXION DB QUERY NUBE
-
-from google.cloud import bigquery
-from google.oauth2 import service_account
-
-@st.cache_resource
-def get_bigquery_client():
-    credentials = service_account.Credentials.from_service_account_info(
-        st.secrets["gcp_service_account"]
-    )
-    return bigquery.Client(credentials=credentials, project=credentials.project_id)
-
-@st.cache_data(ttl=300)
-def run_query(sql: str) -> pd.DataFrame:
-    client = get_bigquery_client()
-    return client.query(sql).to_dataframe()
-
-# Prueba rápida
-dataset_id = st.secrets["bigquery"]["dataset_id"]
-project_id = st.secrets["gcp_service_account"]["project_id"]
-
-df = run_query(f"""
-    SELECT * FROM `{project_id}.{dataset_id}.cba_4_parametros_produccion`
-    LIMIT 100
-""")
-
-st.write(df)
+# 9. Tabla de datos históricos para auditoría
+with st.expander("📂 Ver Registro de Datos Históricos (Desde BigQuery)"):
+    # Convertir las fechas a un formato legible si es necesario, y dar formato a los números
+    st.dataframe(df.style.format({
+        'consumo_planta': '{:.2f} m³', 
+        'consumo_ptar': '{:.2f} m³', 
+        'numero_pollos': '{:,}'
+    }))
