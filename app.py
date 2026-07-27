@@ -39,9 +39,9 @@ def obtener_datos_completos():
     sql = f"""
         SELECT 
             fecha, 
-            numero_pollos, 
+            total_pollos, 
             consumo_planta, 
-            consumo_ptar 
+            procesamiento_ptar 
         FROM `{project_id}.{dataset_id}.cba_4_parametros_produccion`
         ORDER BY fecha ASC
     """
@@ -65,14 +65,14 @@ if df_bruto.empty:
 # A) Extraemos el último registro para las proyecciones (puede no tener consumos aún)
 ultimo_registro = df_bruto.iloc[-1]
 fecha_reciente = ultimo_registro['fecha']
-pollos_reciente = ultimo_registro['numero_pollos']
+pollos_reciente = ultimo_registro['total_pollos']
 
 if pd.isna(pollos_reciente):
     st.warning(f"El registro de la fecha {fecha_reciente} no tiene número de pollos. Por favor, actualiza la base de datos.")
     st.stop()
 
 # B) Filtramos solo los registros COMPLETOS para entrenar el modelo
-df_entrenamiento = df_bruto.dropna(subset=['numero_pollos', 'consumo_planta', 'consumo_ptar'])
+df_entrenamiento = df_bruto.dropna(subset=['total_pollos', 'consumo_planta', 'procesamiento_ptar'])
 
 if len(df_entrenamiento) < 2:
     st.warning("No hay suficientes días con datos completos (pollos + consumos) para generar el modelo.")
@@ -80,7 +80,7 @@ if len(df_entrenamiento) < 2:
 
 
 # 5. Entrenamiento de los modelos de regresión lineal (Solo con datos históricos cerrados)
-X = df_entrenamiento[['numero_pollos']]
+X = df_entrenamiento[['total_pollos']]
 
 # Modelo Planta
 modelo_planta = LinearRegression()
@@ -88,7 +88,7 @@ modelo_planta.fit(X, df_entrenamiento['consumo_planta'])
 
 # Modelo PTAR
 modelo_ptar = LinearRegression()
-modelo_ptar.fit(X, df_entrenamiento['consumo_ptar'])
+modelo_ptar.fit(X, df_entrenamiento['procesamiento_ptar'])
 
 # 6. Diseño de la interfaz (Barra lateral de solo lectura)
 st.sidebar.header("⚙️ Parámetros del Día")
@@ -102,13 +102,13 @@ st.sidebar.metric(
 )
 
 # Indicador visual de si el día ya se cerró o está en proyección
-if pd.isna(ultimo_registro['consumo_planta']) or pd.isna(ultimo_registro['consumo_ptar']):
+if pd.isna(ultimo_registro['consumo_planta']) or pd.isna(ultimo_registro['procesamiento_ptar']):
     st.sidebar.warning("⏳ **Estado del día:** Abierto. Esperando datos de consumo final.")
 else:
     st.sidebar.success("✅ **Estado del día:** Cerrado. Consumos registrados.")
 
 # 7. Cálculo de Predicciones usando el dato más reciente
-X_pred = pd.DataFrame({'numero_pollos': [pollos_reciente]})
+X_pred = pd.DataFrame({'total_pollos': [pollos_reciente]})
 
 pred_planta = max(0.0, modelo_planta.predict(X_pred)[0])
 pred_ptar = max(0.0, modelo_ptar.predict(X_pred)[0])
@@ -139,15 +139,15 @@ st.subheader("📈 Gráfico de Tendencia Histórica")
 fig = go.Figure()
 
 # Rango para dibujar la línea de regresión basado en los datos de entrenamiento
-rango_x = np.linspace(0, df_entrenamiento['numero_pollos'].max() + 5000, 100)
-rango_x_df = pd.DataFrame({'numero_pollos': rango_x})
+rango_x = np.linspace(0, df_entrenamiento['total_pollos'].max() + 5000, 100)
+rango_x_df = pd.DataFrame({'total_pollos': rango_x})
 
 # Planta (Usamos df_entrenamiento para graficar los puntos reales)
-fig.add_trace(go.Scatter(x=df_entrenamiento['numero_pollos'], y=df_entrenamiento['consumo_planta'], mode='markers', name='Histórico Planta', marker=dict(color='#1f77b4', size=10)))
+fig.add_trace(go.Scatter(x=df_entrenamiento['total_pollos'], y=df_entrenamiento['consumo_planta'], mode='markers', name='Histórico Planta', marker=dict(color='#1f77b4', size=10)))
 fig.add_trace(go.Scatter(x=rango_x, y=modelo_planta.predict(rango_x_df), mode='lines', name='Línea Tendencia Planta', line=dict(color='#1f77b4', dash='dash')))
 
 # PTAR
-fig.add_trace(go.Scatter(x=df_entrenamiento['numero_pollos'], y=df_entrenamiento['consumo_ptar'], mode='markers', name='Histórico PTAR', marker=dict(color='#ff7f0e', size=10)))
+fig.add_trace(go.Scatter(x=df_entrenamiento['total_pollos'], y=df_entrenamiento['procesamiento_ptar'], mode='markers', name='Histórico PTAR', marker=dict(color='#ff7f0e', size=10)))
 fig.add_trace(go.Scatter(x=rango_x, y=modelo_ptar.predict(rango_x_df), mode='lines', name='Línea Tendencia PTAR', line=dict(color='#ff7f0e', dash='dash')))
 
 # Punto proyectado Actual
@@ -175,8 +175,8 @@ with st.expander("📂 Ver Registro de Datos Históricos (Incluyendo días abier
     # Formateo inteligente para manejar los valores Nulos/NaN
     formato_columnas = {
         'consumo_planta': lambda x: f"{x:.2f} m³" if pd.notnull(x) else "⏳ Pendiente",
-        'consumo_ptar': lambda x: f"{x:.2f} m³" if pd.notnull(x) else "⏳ Pendiente",
-        'numero_pollos': lambda x: f"{int(x):,}" if pd.notnull(x) else "0"
+        'procesamiento_ptar': lambda x: f"{x:.2f} m³" if pd.notnull(x) else "⏳ Pendiente",
+        'total_pollos': lambda x: f"{int(x):,}" if pd.notnull(x) else "0"
     }
     
     st.dataframe(df_bruto.style.format(formato_columnas))
