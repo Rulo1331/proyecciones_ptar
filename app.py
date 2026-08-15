@@ -18,7 +18,7 @@ col1, col2 = st.columns(2)
 with col1:
     # Botón 1: Lleva a tu código actual
     if st.button("💧 Proyección de Consumo", use_container_width=True):
-        st.switch_page("vista_proyecciones.py")
+        st.switch_page("pages/1_proyeccion.py")
         
     # Botón 3
     if st.button("🏭 Dashboard Producción", use_container_width=True):
