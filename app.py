@@ -18,7 +18,7 @@ def cargar_datos_calidad(dias):
     WHERE fecha >= [hoy - dias]
     """
     fechas = pd.date_range(end=pd.Timestamp.today(), periods=dias).strftime("%Y-%m-%d")
-    np.random.seed(42) # Para que los datos no cambien cada vez que haces clic
+    np.random.seed(42) # Para consistencia en la simulación
     
     df = pd.DataFrame({
         "Fecha": fechas,
@@ -50,53 +50,64 @@ def vista_eficiencia():
     st.info("Espacio para Gráfico de Tratamiento vs Consumo y Tabla Resumen.")
 
 def vista_calidad():
-    st.title("🧪 Calidad del Agua - Histórico")
-    st.markdown("Visualización de parámetros físico-químicos registrados en la base de datos.")
+    st.title("🧪 Analítica de Calidad del Agua")
+    st.markdown("Explorador de parámetros histórico extraído desde la base de datos.")
     
-    # Filtro Global que afecta a todas las pestañas
-    col_filtro, _ = st.columns([1, 3])
+    # 1. Controles Superiores (Filtro de días y Selector de Parámetro)
+    col_filtro, col_param = st.columns([1, 2])
+    
     with col_filtro:
-        dias_hist = st.slider("Días de histórico a consultar:", min_value=7, max_value=30, value=7)
+        dias_hist = st.slider("Días a consultar:", min_value=7, max_value=30, value=14)
+        
+    with col_param:
+        parametro_seleccionado = st.selectbox(
+            "Seleccione el parámetro a visualizar:",
+            ["pH", "Conductividad", "DQO", "SST", "DBO"]
+        )
+        
+    st.divider()
     
-    # Extraemos los datos de la DB
+    # 2. Extraemos los datos de la DB según los días seleccionados
     df_db = cargar_datos_calidad(dias_hist)
     
-    st.divider()
-
-    # ENFOQUE 1: PESTAÑAS INDEPENDIENTES PARA LECTURA
-    tab_ph, tab_cond, tab_dqo, tab_sst, tab_dbo = st.tabs([
-        "pH", "Conductividad", "DQO", "SST", "DBO₅"
-    ])
+    # 3. Mapeo de unidades y límites de alerta dinámicos
+    config_params = {
+        "pH": {"unidad": "", "color": "#1f77b4", "max": 8.0, "min": 6.5},
+        "Conductividad": {"unidad": "µS/cm", "color": "#2ca02c", "max": None, "min": None},
+        "DQO": {"unidad": "mg/L", "color": "#ff7f0e", "max": 500, "min": None},
+        "SST": {"unidad": "mg/L", "color": "#9467bd", "max": 250, "min": None},
+        "DBO": {"unidad": "mg/L", "color": "#8c564b", "max": 200, "min": None}
+    }
     
-    with tab_ph:
-        st.subheader("Evolución del pH")
-        fig_ph = px.line(df_db, x="Fecha", y="pH", markers=True, color_discrete_sequence=["#1f77b4"])
-        # Limites legales simulados
-        fig_ph.add_hline(y=8.0, line_dash="dash", line_color="red", annotation_text="Max (8.0)")
-        fig_ph.add_hline(y=6.5, line_dash="dash", line_color="red", annotation_text="Min (6.5)", annotation_position="bottom right")
-        st.plotly_chart(fig_ph, use_container_width=True)
-        
-    with tab_cond:
-        st.subheader("Conductividad (µS/cm)")
-        fig_cond = px.area(df_db, x="Fecha", y="Conductividad", color_discrete_sequence=["#2ca02c"])
-        st.plotly_chart(fig_cond, use_container_width=True)
-        
-    with tab_dqo:
-        st.subheader("Demanda Química de Oxígeno (mg/L)")
-        fig_dqo = px.bar(df_db, x="Fecha", y="DQO", color_discrete_sequence=["#ff7f0e"])
-        fig_dqo.add_hline(y=500, line_dash="dash", line_color="red", annotation_text="Límite Legal (500)")
-        st.plotly_chart(fig_dqo, use_container_width=True)
-        
-    with tab_sst:
-        st.subheader("Sólidos Suspendidos Totales (mg/L)")
-        fig_sst = px.line(df_db, x="Fecha", y="SST", markers=True, color_discrete_sequence=["#9467bd"])
-        st.plotly_chart(fig_sst, use_container_width=True)
-        
-    with tab_dbo:
-        st.subheader("Demanda Bioquímica de Oxígeno - DBO₅ (mg/L)")
-        st.warning("Los datos mostrados corresponden a la fecha en que se tomó la muestra original.")
-        fig_dbo = px.bar(df_db, x="Fecha", y="DBO", color_discrete_sequence=["#8c564b"])
-        st.plotly_chart(fig_dbo, use_container_width=True)
+    conf = config_params[parametro_seleccionado]
+    titulo_grafico = f"Tendencia de {parametro_seleccionado} {f'({conf['unidad']})' if conf['unidad'] else ''}"
+    
+    # 4. Generación del gráfico único dinámico
+    fig = px.line(
+        df_db, 
+        x="Fecha", 
+        y=parametro_seleccionado, 
+        title=titulo_grafico,
+        markers=True,
+        color_discrete_sequence=[conf["color"]]
+    )
+    
+    # Agregar líneas de límite si existen en la configuración
+    if conf["max"] is not None:
+        fig.add_hline(y=conf["max"], line_dash="dash", line_color="red", annotation_text=f"Límite Máx ({conf['max']})")
+    if conf["min"] is not None:
+        fig.add_hline(y=conf["min"], line_dash="dash", line_color="red", annotation_text=f"Límite Mín ({conf['min']})", annotation_position="bottom right")
+
+    fig.update_layout(height=400, margin=dict(l=20, r=20, t=40, b=20))
+    st.plotly_chart(fig, use_container_width=True)
+
+    # 5. Tabla de Datos Ocultable (Expander)
+    with st.expander(f"Ver tabla de datos en crudo para {parametro_seleccionado}"):
+        st.dataframe(
+            df_db[["Fecha", parametro_seleccionado]], 
+            use_container_width=True, 
+            hide_index=True
+        )
 
 def vista_costos():
     st.title("💰 Control de Costos")
@@ -124,7 +135,7 @@ with st.sidebar:
         options=opciones_menu,
         icons=iconos_menu, 
         menu_icon="cast", 
-        default_index=2, # Iniciamos en la vista de Calidad por defecto para pruebas
+        default_index=2, # Iniciamos en la vista de Calidad
         styles={
             "container": {"padding": "0!important", "background-color": "transparent"},
             "icon": {"color": "gray", "font-size": "18px"}, 
