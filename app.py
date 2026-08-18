@@ -1,100 +1,110 @@
 import streamlit as st
 from streamlit_option_menu import option_menu
 import pandas as pd
+import numpy as np
+import plotly.express as px
 
+# 1. CONFIGURACIÓN INICIAL
 st.set_page_config(page_title="MES PTAR", layout="wide", initial_sidebar_state="expanded")
 
 if 'rol_usuario' not in st.session_state:
     st.session_state['rol_usuario'] = "operador" 
 
-# --- VISTAS CON SUB-PESTAÑAS ---
+# --- SIMULADOR DE BASE DE DATOS ---
+@st.cache_data
+def cargar_datos_calidad(dias):
+    """
+    Simula: SELECT fecha, ph, dqo, sst, dbo, conductividad FROM calidad 
+    WHERE fecha >= [hoy - dias]
+    """
+    fechas = pd.date_range(end=pd.Timestamp.today(), periods=dias).strftime("%Y-%m-%d")
+    np.random.seed(42) # Para que los datos no cambien cada vez que haces clic
+    
+    df = pd.DataFrame({
+        "Fecha": fechas,
+        "pH": np.random.uniform(6.8, 7.8, dias),
+        "Conductividad": np.random.uniform(800, 950, dias),
+        "DQO": np.random.uniform(400, 550, dias),
+        "SST": np.random.uniform(180, 250, dias),
+        "DBO": np.random.uniform(150, 210, dias)
+    })
+    return df
+
+# --- VISTAS DEL SISTEMA ---
 
 def vista_panel_principal():
     st.title("🎛️ Panel Principal en Vivo")
+    st.markdown("Monitorización en tiempo real del equipo GEM.")
     
-    # Subvistas usando Tabs
-    tab_general, tab_sensores = st.tabs(["Visión General", "Detalle de Sensores"])
+    col1, col2, col3, col4 = st.columns(4)
+    col1.metric("Tratamiento Diario", "1250 m³", "12 m³")
+    col2.metric("Consumo Planta", "150 m³", "-5 m³", delta_color="inverse")
+    col3.metric("Nivel Ecualizador", "68 %", "Normal", delta_color="off")
+    col4.metric("Velocidad GEM", "1450 RPM", "Óptimo", delta_color="off")
     
-    with tab_general:
-        st.markdown("### Estado Actual de Planta")
-        col1, col2, col3, col4 = st.columns(4)
-        col1.metric("Tratamiento Diario", "1250 m³", "12 m³")
-        col2.metric("Consumo Planta", "150 m³", "-5 m³", delta_color="inverse")
-        col3.metric("Nivel Ecualizador", "68 %", "Normal", delta_color="off")
-        col4.metric("Velocidad GEM", "1450 RPM", "Óptimo", delta_color="off")
-        st.info("Espacio para Gráficos de Velocímetro y Disponibilidad")
-        
-    with tab_sensores:
-        st.markdown("### Lecturas Crudas en Tiempo Real")
-        st.dataframe(pd.DataFrame({
-            "Sensor": ["Presión Entrada", "Temperatura Motor", "Caudalímetro"],
-            "Valor": ["2.4 Bar", "65 °C", "45 L/s"],
-            "Estado": ["🟢 OK", "🟢 OK", "🟡 Alerta Baja"]
-        }), hide_index=True)
+    st.divider()
+    st.info("Aquí irán los indicadores en tiempo real (Velocímetros y Donas).")
 
 def vista_eficiencia():
     st.title("⚖️ Eficiencia y Operación")
-    
-    tab_balance, tab_paros = st.tabs(["Balance de Caudales", "Registro de Paros"])
-    
-    with tab_balance:
-        st.info("Espacio para Gráfico de Líneas: Tratamiento vs Consumo")
-    
-    with tab_paros:
-        st.info("Espacio para Tabla de Tiempos Muertos y Justificaciones")
+    st.info("Espacio para Gráfico de Tratamiento vs Consumo y Tabla Resumen.")
 
 def vista_calidad():
-    st.title("🧪 Calidad del Agua")
+    st.title("🧪 Calidad del Agua - Histórico")
+    st.markdown("Visualización de parámetros físico-químicos registrados en la base de datos.")
     
-    tab_ingreso, tab_tendencias = st.tabs(["Ingreso de Laboratorio", "Tendencias Históricas"])
+    # Filtro Global que afecta a todas las pestañas
+    col_filtro, _ = st.columns([1, 3])
+    with col_filtro:
+        dias_hist = st.slider("Días de histórico a consultar:", min_value=7, max_value=30, value=7)
     
-    with tab_ingreso:
-        st.markdown("### Registro de Parámetros Físico-Químicos")
-        with st.form("registro_calidad_completo"):
-            col1, col2, col3 = st.columns(3)
-            with col1:
-                ph = st.number_input("pH", min_value=0.0, max_value=14.0, value=7.2, step=0.1)
-                conductividad = st.number_input("Conductividad (µS/cm)", min_value=0.0, value=850.0)
-            with col2:
-                dbo = st.number_input("DBO₅ (mg/L)", min_value=0.0, value=250.0)
-                dqo = st.number_input("DQO (mg/L)", min_value=0.0, value=600.0)
-            with col3:
-                sst = st.number_input("SST (mg/L)", min_value=0.0, value=300.0)
-                observaciones = st.text_input("Observaciones (Opcional)")
-            
-            st.form_submit_button("Guardar Resultados")
-            
-    with tab_tendencias:
-        st.info("Espacio para gráficas mostrando la reducción de DQO y SST a lo largo del mes.")
+    # Extraemos los datos de la DB
+    df_db = cargar_datos_calidad(dias_hist)
+    
+    st.divider()
+
+    # ENFOQUE 1: PESTAÑAS INDEPENDIENTES PARA LECTURA
+    tab_ph, tab_cond, tab_dqo, tab_sst, tab_dbo = st.tabs([
+        "pH", "Conductividad", "DQO", "SST", "DBO₅"
+    ])
+    
+    with tab_ph:
+        st.subheader("Evolución del pH")
+        fig_ph = px.line(df_db, x="Fecha", y="pH", markers=True, color_discrete_sequence=["#1f77b4"])
+        # Limites legales simulados
+        fig_ph.add_hline(y=8.0, line_dash="dash", line_color="red", annotation_text="Max (8.0)")
+        fig_ph.add_hline(y=6.5, line_dash="dash", line_color="red", annotation_text="Min (6.5)", annotation_position="bottom right")
+        st.plotly_chart(fig_ph, use_container_width=True)
+        
+    with tab_cond:
+        st.subheader("Conductividad (µS/cm)")
+        fig_cond = px.area(df_db, x="Fecha", y="Conductividad", color_discrete_sequence=["#2ca02c"])
+        st.plotly_chart(fig_cond, use_container_width=True)
+        
+    with tab_dqo:
+        st.subheader("Demanda Química de Oxígeno (mg/L)")
+        fig_dqo = px.bar(df_db, x="Fecha", y="DQO", color_discrete_sequence=["#ff7f0e"])
+        fig_dqo.add_hline(y=500, line_dash="dash", line_color="red", annotation_text="Límite Legal (500)")
+        st.plotly_chart(fig_dqo, use_container_width=True)
+        
+    with tab_sst:
+        st.subheader("Sólidos Suspendidos Totales (mg/L)")
+        fig_sst = px.line(df_db, x="Fecha", y="SST", markers=True, color_discrete_sequence=["#9467bd"])
+        st.plotly_chart(fig_sst, use_container_width=True)
+        
+    with tab_dbo:
+        st.subheader("Demanda Bioquímica de Oxígeno - DBO₅ (mg/L)")
+        st.warning("Los datos mostrados corresponden a la fecha en que se tomó la muestra original.")
+        fig_dbo = px.bar(df_db, x="Fecha", y="DBO", color_discrete_sequence=["#8c564b"])
+        st.plotly_chart(fig_dbo, use_container_width=True)
 
 def vista_costos():
     st.title("💰 Control de Costos")
-    
-    tab_energia, tab_quimicos, tab_resumen = st.tabs(["Energía", "Químicos", "Resumen Financiero"])
-    
-    with tab_energia:
-        st.markdown("### Eficiencia Energética (kWh / m³)")
-        st.info("Gráfico comparando consumo eléctrico del GEM vs agua tratada.")
-        
-    with tab_quimicos:
-        st.markdown("### Dosificación y Costo de Reactivos")
-        col1, col2 = st.columns(2)
-        col1.metric("Costo Floculante (Semana)", "$ 450", "+$20")
-        col2.metric("Costo Coagulante (Semana)", "$ 320", "-$15")
-        st.info("Tabla de consumo de químicos por lote.")
-        
-    with tab_resumen:
-        st.markdown("### Costo Total por Metro Cúbico Tratado")
-        st.metric("OPEX / m³ (Mes actual)", "$ 1.15 / m³", "-$ 0.05", delta_color="inverse")
+    st.info("Espacio para control de energía, químicos y OPEX.")
 
 def vista_admin_usuarios():
     st.title("⚙️ Administración")
-    
-    tab_usuarios, tab_alarmas = st.tabs(["Gestión de Usuarios", "Configuración de Alarmas"])
-    with tab_usuarios:
-        st.info("Tabla interactiva para editar usuarios.")
-    with tab_alarmas:
-        st.info("Configuración de límites máximos para presión, DQO, etc.")
+    st.info("Espacio para gestión de usuarios y parámetros.")
 
 # --- MENÚ DE NAVEGACIÓN LATERAL ---
 
@@ -102,7 +112,6 @@ with st.sidebar:
     st.image("https://cdn-icons-png.flaticon.com/512/3268/3268800.png", width=60)
     st.markdown("### MES PTAR")
     
-    # Se añade "Costos" a las opciones
     opciones_menu = ["Panel Principal", "Eficiencia", "Calidad", "Costos"]
     iconos_menu = ["activity", "graph-up", "droplet", "currency-dollar"]
     
@@ -115,7 +124,7 @@ with st.sidebar:
         options=opciones_menu,
         icons=iconos_menu, 
         menu_icon="cast", 
-        default_index=0,
+        default_index=2, # Iniciamos en la vista de Calidad por defecto para pruebas
         styles={
             "container": {"padding": "0!important", "background-color": "transparent"},
             "icon": {"color": "gray", "font-size": "18px"}, 
@@ -133,7 +142,6 @@ with st.sidebar:
         st.rerun()
 
 # --- ENRUTADOR ---
-
 if seleccion == "Panel Principal":
     vista_panel_principal()
 elif seleccion == "Eficiencia":
