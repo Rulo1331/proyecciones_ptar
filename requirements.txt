@@ -5,3 +5,5 @@ scikit-learn
 plotly
 google-cloud-bigquery
 db-dtypes
+plotly
+streamlit-option-menu
