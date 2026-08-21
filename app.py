@@ -106,7 +106,7 @@ VARIABLES_EFICIENCIA = {
         "unit": "m³/h",
         "table": f"{BQ_PROJECT}.BD_Procesamiento.cba_4_consumos_diarios",   # <-- edita el nombre real
         "col_valor": "consumo_planta",                                  # <-- edita el nombre real
-        "col_fecha": "bloque_horario",                                    # <-- edita el nombre real
+        "col_fecha": "fecha_registro",                                    # <-- edita el nombre real
         "decimales": 1,
         "limite_max": None,
         "limite_min": None,
@@ -117,7 +117,7 @@ VARIABLES_EFICIENCIA = {
         "unit": "%",
         "table": f"{BQ_PROJECT}.BD_Procesamiento.cba_4_consumos_diarios",  # <-- edita el nombre real
         "col_valor": "procesamient_ptar",                                     # <-- edita el nombre real
-        "col_fecha": "bloque_horario",                                          # <-- edita el nombre real
+        "col_fecha": "fecha_registro",                                          # <-- edita el nombre real
         "decimales": 1,
         "limite_max": 100,
         "limite_min": 70,
