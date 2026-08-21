@@ -16,9 +16,10 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="auto",
     menu_items = {
-        'Get Help': 'https://cba-produccion.apps.ingprocesos.com/dashboard/ptar',
-        'Report a bug': "https://cba-produccion.apps.ingprocesos.com/dashboard/principal",
-        'About': "Ejemploooooo mi king"
+        'PTAR': 'https://cba-produccion.apps.ingprocesos.com/dashboard/ptar',
+        'Geomembrana': "https://cba-produccion.apps.ingprocesos.com/dashboard/principal",
+        'Produccion': "https://cba-produccion.apps.ingprocesos.com/dashboard/produccion",
+        'Informacion': "Dashboard elaborado por el área de Ingenieria de Prcesos"
     }
     
 )
