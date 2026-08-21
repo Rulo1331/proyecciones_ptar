@@ -14,7 +14,13 @@ st.set_page_config(
     page_title="PTAR · Santa Elena",
     page_icon=":factory:", # FAVorite ICON
     layout="wide",
-    initial_sidebar_state="auto"
+    initial_sidebar_state="auto",
+    menu_items = {
+        'Get Help': 'https://cba-produccion.apps.ingprocesos.com/dashboard/ptar',
+        'Report a bug': "https://cba-produccion.apps.ingprocesos.com/dashboard/principal",
+        'About': "Ejemploooooo mi king"
+    }
+    
 )
 
 if 'rol_usuario' not in st.session_state:
