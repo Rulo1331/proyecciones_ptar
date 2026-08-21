@@ -12,9 +12,9 @@ from datetime import timedelta
 # ============================================================
 st.set_page_config(
     page_title="PTAR · Santa Elena",
-    page_icon="💧",
+    page_icon=":factory:", # FAVorite ICON
     layout="wide",
-    initial_sidebar_state="locked"
+    initial_sidebar_state="auto"
 )
 
 if 'rol_usuario' not in st.session_state:
