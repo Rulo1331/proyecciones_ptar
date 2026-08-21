@@ -86,38 +86,38 @@ pio.templates.default = "ptar"
 
 REFRESH_SECONDS = 45  # cada cuánto se refresca sola la vista de Eficiencia
 
-BQ_PROJECT = "tu-proyecto-gcp"  # <-- tu project_id de GCP
+BQ_PROJECT = "appsheetgr"  # <-- tu project_id de GCP
 
 VARIABLES_EFICIENCIA = {
-    "flujo": {
-        "label": "Flujo tratado",
+    "disponibilidad": {
+        "label": "Disponibilidad de Planta",
+        "icon": "💧",
+        "unit": "%",
+        "table": f"{BQ_PROJECT}.BD_Procesamiento.cba_4_disponibilidad_ptar",
+        "col_valor": "porcentaje_operando",
+        "col_fecha": "turno",
+        "decimales": 1,
+        "limite_max": None,
+        "limite_min": None,
+    },
+    "consumo_agua_planta": {
+        "label": "Consumo Agua Planta",
         "icon": "💧",
         "unit": "m³/h",
-        "table": f"{BQ_PROJECT}.plantaPalmo.flujometro_ptar",
-        "col_valor": "acumulador_corregido",
-        "col_fecha": "fecha",
+        "table": f"{BQ_PROJECT}.BD_Procesamiento.cba_4_consumos_diarios",   # <-- edita el nombre real
+        "col_valor": "consumo_planta",                                  # <-- edita el nombre real
+        "col_fecha": "bloque_horario",                                    # <-- edita el nombre real
         "decimales": 1,
         "limite_max": None,
         "limite_min": None,
     },
-    "consumo_energia": {
-        "label": "Consumo energético",
-        "icon": "⚡",
-        "unit": "kWh",
-        "table": f"{BQ_PROJECT}.plantaPalmo.consumo_energia",   # <-- edita el nombre real
-        "col_valor": "consumo",                                  # <-- edita el nombre real
-        "col_fecha": "fecha",                                    # <-- edita el nombre real
-        "decimales": 1,
-        "limite_max": None,
-        "limite_min": None,
-    },
-    "eficiencia_tratamiento": {
-        "label": "Eficiencia de tratamiento",
+    "procesamiento_ptar": {
+        "label": "Procesamiento PTAR",
         "icon": "🧪",
         "unit": "%",
-        "table": f"{BQ_PROJECT}.plantaPalmo.eficiencia_tratamiento",  # <-- edita el nombre real
-        "col_valor": "eficiencia",                                     # <-- edita el nombre real
-        "col_fecha": "fecha",                                          # <-- edita el nombre real
+        "table": f"{BQ_PROJECT}.BD_Procesamiento.cba_4_consumos_diarios",  # <-- edita el nombre real
+        "col_valor": "procesamient_ptar",                                     # <-- edita el nombre real
+        "col_fecha": "bloque_horario",                                          # <-- edita el nombre real
         "decimales": 1,
         "limite_max": 100,
         "limite_min": 70,
