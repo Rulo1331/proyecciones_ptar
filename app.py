@@ -11,10 +11,10 @@ from datetime import timedelta
 # 1. CONFIGURACIÓN INICIAL
 # ============================================================
 st.set_page_config(
-    page_title="MES PTAR · Santa Elena",
+    page_title="PTAR · Santa Elena",
     page_icon="💧",
     layout="wide",
-    initial_sidebar_state="expanded"
+    initial_sidebar_state="contracted"
 )
 
 if 'rol_usuario' not in st.session_state:
