@@ -16,9 +16,12 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="auto",
     menu_items = {
-        'Get help': 'https://cba-produccion.apps.ingprocesos.com/dashboard/ptar',
-        'About': "https://cba-produccion.apps.ingprocesos.com/dashboard/principal",
-        'About': "https://cba-produccion.apps.ingprocesos.com/dashboard/ptar"
+        'About': """
+        https://cba-produccion.apps.ingprocesos.com/dashboard/ptar
+        https://cba-produccion.apps.ingprocesos.com/dashboard/produccion
+        https://cba-produccion.apps.ingprocesos.com/dashboard/riego
+        https://cba-produccion.apps.ingprocesos.com/dashboard/principal
+        """
     }
     
 )
