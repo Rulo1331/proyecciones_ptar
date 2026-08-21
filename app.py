@@ -17,9 +17,13 @@ st.set_page_config(
     initial_sidebar_state="auto",
     menu_items = {
         'About': """
+        PTAR : 
         https://cba-produccion.apps.ingprocesos.com/dashboard/ptar
+        PRODUCCION:
         https://cba-produccion.apps.ingprocesos.com/dashboard/produccion
+        RIEGO:
         https://cba-produccion.apps.ingprocesos.com/dashboard/riego
+        DEMANDA:
         https://cba-produccion.apps.ingprocesos.com/dashboard/principal
         """
     }
