@@ -14,7 +14,7 @@ st.set_page_config(
     page_title="PTAR · Santa Elena",
     page_icon="💧",
     layout="wide",
-    initial_sidebar_state="contracted"
+    initial_sidebar_state="expanded"
 )
 
 if 'rol_usuario' not in st.session_state:
