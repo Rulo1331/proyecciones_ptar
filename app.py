@@ -17,7 +17,8 @@ st.set_page_config(
     initial_sidebar_state="auto",
     menu_items = {
         'Get help': 'https://cba-produccion.apps.ingprocesos.com/dashboard/ptar',
-        'Abouy': "https://cba-produccion.apps.ingprocesos.com/dashboard/principal"
+        'About': "https://cba-produccion.apps.ingprocesos.com/dashboard/principal",
+        'About': "https://cba-produccion.apps.ingprocesos.com/dashboard/principal"
     }
     
 )
