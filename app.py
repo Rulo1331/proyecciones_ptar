@@ -18,31 +18,32 @@ st.set_page_config(
     menu_items = {
         'About': """
         PTAR : 
+        
         https://cba-produccion.apps.ingprocesos.com/dashboard/ptar
         
         PRODUCCION:
+        
         https://cba-produccion.apps.ingprocesos.com/dashboard/produccion
         
         RIEGO:
+        
         https://cba-produccion.apps.ingprocesos.com/dashboard/riego
        
         DEMANDA:
+        
         https://cba-produccion.apps.ingprocesos.com/dashboard/principal
         """
     }
     
 )
 
+#SESSION STATE PARA CAMBIAR ENTRE OPERADOR Y ADMINISTRADOR
 if 'rol_usuario' not in st.session_state:
     st.session_state['rol_usuario'] = "operador"
 
 # ============================================================
 # 2. IDENTIDAD VISUAL — tokens + estilos globales
 # ============================================================
-# Paleta heredada del stack Node-RED de la planta (mismo verde-teal
-# oscuro #04342C / #085041 usado en los tableros de campo), extendida
-# con un acento aqua para datos en vivo y colores de estado semáforo
-# consistentes con la automatización de sopladores (verde/ámbar/rojo).
 
 PALETTE = {
     "dark":       "#04342C",
@@ -59,7 +60,7 @@ PALETTE = {
     "green":      "#15803D",
 }
 
-# Tema Plotly a medida, para que los gráficos hablen el mismo idioma
+# Tema Plotly a medida
 # visual que el resto del panel (en vez del azul/rojo por defecto).
 pio.templates["ptar"] = go.layout.Template(
     layout=go.Layout(
