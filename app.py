@@ -89,7 +89,7 @@ VARIABLES_EFICIENCIA = {
         "label": "Disponibilidad de Planta",
         "icon": "💧",
         "table": f"{BQ_PROJECT}.BD_Procesamiento.cba_4_disponibilidad_ptar",
-        "col_fecha": "turno",
+        "col_fecha": "fecha_registro",
         # ⚠️ VERIFICAR: si "turno" es texto (ej. "Mañana"/"Tarde") o una fecha
         # sin hora, los rangos de 1h/6h no van a traer nada por diseño (no
         # por el desfase horario) — este dato se registra por turno, no de
@@ -100,7 +100,7 @@ VARIABLES_EFICIENCIA = {
         "series": [
             {"col": "porcentaje_operando", "label": "Disponible", "icon": "✅", "color": PALETTE["green"]},
             {"col": "porcentaje_standby",  "label": "Stand By",   "icon": "⏸️", "color": PALETTE["amber"]},  # <-- edita el nombre real
-            {"col": "porcentaje_falla",    "label": "Falla",      "icon": "🚨", "color": PALETTE["red"]},    # <-- edita el nombre real
+            {"col": "porcentaje_fallo",    "label": "Falla",      "icon": "🚨", "color": PALETTE["red"]},    # <-- edita el nombre real
         ],
     },
     "consumo_agua_planta": {
