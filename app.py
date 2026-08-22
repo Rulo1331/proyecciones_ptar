@@ -88,19 +88,20 @@ VARIABLES_EFICIENCIA = {
     "disponibilidad": {
         "label": "Disponibilidad de Planta",
         "icon": "💧",
-        "unit": "%",
         "table": f"{BQ_PROJECT}.BD_Procesamiento.cba_4_disponibilidad_ptar",
-        "col_valor": "porcentaje_operando",
-        "col_fecha": "fecha_registro",
-        "decimales": 1,
-        "limite_max": None,
-        "limite_min": 90,
+        "col_fecha": "turno",
         # ⚠️ VERIFICAR: si "turno" es texto (ej. "Mañana"/"Tarde") o una fecha
         # sin hora, los rangos de 1h/6h no van a traer nada por diseño (no
         # por el desfase horario) — este dato se registra por turno, no de
         # forma continua. Si es así, quizás esta variable no debería tener
         # rangos de 1h/6h, sino ver por turno/día.
         "hora_local": True,
+        "vista": "multi",  # <- dispara el layout de 3 cajas + gráfico + tabla
+        "series": [
+            {"col": "porcentaje_operando", "label": "Disponible", "icon": "✅", "color": PALETTE["green"]},
+            {"col": "porcentaje_standby",  "label": "Stand By",   "icon": "⏸️", "color": PALETTE["amber"]},  # <-- edita el nombre real
+            {"col": "porcentaje_falla",    "label": "Falla",      "icon": "🚨", "color": PALETTE["red"]},    # <-- edita el nombre real
+        ],
     },
     "consumo_agua_planta": {
         "label": "Consumo Agua Planta",
@@ -110,9 +111,10 @@ VARIABLES_EFICIENCIA = {
         "col_valor": "consumo_planta",
         "col_fecha": "fecha_registro",
         "decimales": 1,
-        "limite_max": 780,
+        "limite_max": None,
         "limite_min": None,
         "hora_local": True,  # <-- confirma el tipo de columna en el Schema
+        "vista": "simple",
     },
     "procesamiento_ptar": {
         "label": "Procesamiento PTAR",
@@ -122,9 +124,10 @@ VARIABLES_EFICIENCIA = {
         "col_valor": "procesamient_ptar",
         "col_fecha": "fecha_registro",
         "decimales": 1,
-        "limite_max": None,
-        "limite_min": None,
+        "limite_max": 100,
+        "limite_min": 70,
         "hora_local": True,  # <-- confirma el tipo de columna en el Schema
+        "vista": "simple",
     },
 }
 
@@ -177,6 +180,37 @@ def fetch_variable_data(table: str, col_valor: str, col_fecha: str, horas: int,
     )
     df = client.query(query, job_config=job_config).to_dataframe()
     return df
+
+
+def _limite_sql_por_zona(hora_local: bool) -> str:
+    """Arma el límite temporal de la ventana (@horas), ajustado por el mismo
+    desfase de 5h (Lima = UTC-5) que fetch_variable_data. Centralizado aquí
+    para no repetirlo entre la consulta de una sola serie y la multi-serie."""
+    if hora_local:
+        return "TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL (@horas + 5) HOUR)"
+    return "TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL @horas HOUR)"
+
+
+@st.cache_data(ttl=REFRESH_SECONDS, show_spinner=False)
+def fetch_multi_columna_data(table: str, columnas: tuple, col_fecha: str, horas: int,
+                              hora_local: bool = True) -> pd.DataFrame:
+    """Igual que fetch_variable_data pero trae varias columnas de valor en la
+    MISMA consulta (una sola llamada a BigQuery para las 3 series de
+    Disponibilidad, en vez de 3 consultas separadas)."""
+    client = get_bq_client()
+    limite_sql = _limite_sql_por_zona(hora_local)
+    columnas_sql = ", ".join(columnas)
+
+    query = f"""
+        SELECT {col_fecha} AS fecha, {columnas_sql}
+        FROM `{table}`
+        WHERE {col_fecha} >= {limite_sql}
+        ORDER BY {col_fecha} ASC
+    """
+    job_config = bigquery.QueryJobConfig(
+        query_parameters=[bigquery.ScalarQueryParameter("horas", "INT64", horas)]
+    )
+    return client.query(query, job_config=job_config).to_dataframe()
 
 
 def inject_css():
@@ -539,6 +573,66 @@ def _delta_html(actual, anterior):
     return f'<span class="hero-delta {clase}">{flecha} {abs(pct):.1f}% vs. lectura anterior</span>'
 
 
+def panel_disponibilidad_multi(conf: dict, horas: int, rango_label: str):
+    """Layout al estilo de la vista 'Calidad': 3 cajas KPI (una por serie),
+    el gráfico multi-línea debajo, y la tabla completa de valores al final."""
+    columnas = tuple(s["col"] for s in conf["series"])
+
+    try:
+        df = fetch_multi_columna_data(
+            conf["table"], columnas, conf["col_fecha"], horas,
+            hora_local=conf.get("hora_local", True)
+        )
+    except Exception as e:
+        st.error(
+            "No se pudo consultar BigQuery para esta variable. "
+            "Revisa que la tabla exista, que las 3 columnas de series existan, "
+            "y que las credenciales en Secrets sean correctas."
+        )
+        st.caption(f"Detalle técnico: {e}")
+        return
+
+    if df.empty:
+        st.warning(f"Sin lecturas de **{conf['label']}** en las últimas {rango_label}.")
+        return
+
+    df["fecha"] = pd.to_datetime(df["fecha"])
+    ultimo = df.iloc[-1]
+
+    # --- 3 cajas KPI, una por serie ---
+    cols = st.columns(len(conf["series"]))
+    for col_widget, serie in zip(cols, conf["series"]):
+        valor = ultimo[serie["col"]]
+        with col_widget:
+            st.markdown(f"""
+            <div class="kpi-card" style="border-left-color:{serie['color']};">
+                <div class="kpi-label">{serie['icon']} {serie['label']}</div>
+                <div class="kpi-value">{valor:.1f}<span class="kpi-unit">%</span></div>
+                <div class="kpi-sub">Último turno registrado</div>
+            </div>""", unsafe_allow_html=True)
+
+    st.markdown("<div style='height:18px'></div>", unsafe_allow_html=True)
+
+    # --- Gráfico: una línea por serie, mismos colores que las cajas ---
+    nombre_por_col = {s["col"]: s["label"] for s in conf["series"]}
+    color_por_label = {s["label"]: s["color"] for s in conf["series"]}
+    df_largo = df.melt(id_vars="fecha", value_vars=list(columnas),
+                        var_name="serie", value_name="valor")
+    df_largo["serie"] = df_largo["serie"].map(nombre_por_col)
+
+    fig = px.line(df_largo, x="fecha", y="valor", color="serie", markers=True,
+                  color_discrete_map=color_por_label)
+    fig.update_layout(height=300, showlegend=True, legend_title=None,
+                       xaxis_title=None, yaxis_title="%")
+    st.plotly_chart(fig, use_container_width=True, key="chart_disponibilidad")
+
+    st.markdown("<div style='height:18px'></div>", unsafe_allow_html=True)
+
+    # --- Tabla con todos los valores del rango consultado ---
+    df_tabla = df.rename(columns={**nombre_por_col, "fecha": "Turno"})
+    st.dataframe(df_tabla, use_container_width=True, hide_index=True)
+
+
 @st.fragment(run_every=f"{REFRESH_SECONDS}s")
 def panel_eficiencia_vivo():
     """Fragmento auto-actualizable: solo esta sección se vuelve a renderizar
@@ -575,6 +669,17 @@ def panel_eficiencia_vivo():
         horizontal=True, key="rango_horas_eficiencia", label_visibility="collapsed"
     )
     horas = RANGO_HORAS[rango_label]
+
+    # --- Disponibilidad usa el layout de 3 cajas + tabla; el resto sigue con
+    # la tarjeta hero de una sola cifra ---
+    if conf.get("vista") == "multi":
+        panel_disponibilidad_multi(conf, horas, rango_label)
+        st.markdown(
+            f'<div class="live-caption"><span class="status-dot live"></span>'
+            f'Auto-actualización cada {REFRESH_SECONDS}s · consulta a BigQuery cacheada para no sobrecargar la app</div>',
+            unsafe_allow_html=True
+        )
+        return
 
     # --- Consulta a BigQuery (cacheada por REFRESH_SECONDS) ---
     try:
