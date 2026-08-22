@@ -128,6 +128,7 @@ RANGO_HORAS = {"1 h": 1, "6 h": 6, "24 h": 24, "7 días": 24 * 7}
 
 
 @st.cache_resource(show_spinner=False)
+#  CONEXION CON BIGQUERY
 def get_bq_client():
     """Cliente de BigQuery reutilizado entre reruns — se crea una sola vez
     por sesión del servidor, no en cada refresco."""
