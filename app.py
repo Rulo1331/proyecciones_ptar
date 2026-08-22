@@ -94,7 +94,7 @@ VARIABLES_EFICIENCIA = {
         "col_fecha": "fecha_registro",
         "decimales": 1,
         "limite_max": None,
-        "limite_min": None,
+        "limite_min": 90,
         # ⚠️ VERIFICAR: si "turno" es texto (ej. "Mañana"/"Tarde") o una fecha
         # sin hora, los rangos de 1h/6h no van a traer nada por diseño (no
         # por el desfase horario) — este dato se registra por turno, no de
@@ -110,7 +110,7 @@ VARIABLES_EFICIENCIA = {
         "col_valor": "consumo_planta",
         "col_fecha": "fecha_registro",
         "decimales": 1,
-        "limite_max": None,
+        "limite_max": 780,
         "limite_min": None,
         "hora_local": True,  # <-- confirma el tipo de columna en el Schema
     },
@@ -122,8 +122,8 @@ VARIABLES_EFICIENCIA = {
         "col_valor": "procesamient_ptar",
         "col_fecha": "fecha_registro",
         "decimales": 1,
-        "limite_max": 100,
-        "limite_min": 70,
+        "limite_max": None,
+        "limite_min": None,
         "hora_local": True,  # <-- confirma el tipo de columna en el Schema
     },
 }
