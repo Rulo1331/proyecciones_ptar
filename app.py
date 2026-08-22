@@ -100,7 +100,7 @@ VARIABLES_EFICIENCIA = {
         "series": [
             {"col": "porcentaje_operando", "label": "Disponible", "icon": "✅", "color": PALETTE["green"]},
             {"col": "porcentaje_standby",  "label": "Stand By",   "icon": "⏸️", "color": PALETTE["amber"]},  # <-- edita el nombre real
-            {"col": "porcentaje_falla",    "label": "Falla",      "icon": "🚨", "color": PALETTE["red"]},    # <-- edita el nombre real
+            {"col": "porcentaje_fallo",    "label": "Falla",      "icon": "🚨", "color": PALETTE["red"]},    # <-- edita el nombre real
         ],
     },
     "consumo_agua_planta": {
