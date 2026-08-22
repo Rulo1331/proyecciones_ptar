@@ -80,13 +80,9 @@ pio.templates.default = "ptar"
 # ============================================================
 # 2.5 BIGQUERY — variables de eficiencia en tiempo real
 # ============================================================
-# ⚠️ EDITA ESTA SECCIÓN con tus tablas reales. Cada variable vive en su
-# propia tabla de BigQuery (una fila por lectura, con columna de fecha/hora
-# y columna de valor). El resto del panel se arma solo a partir de esto.
-
 REFRESH_SECONDS = 45  # cada cuánto se refresca sola la vista de Eficiencia
 
-BQ_PROJECT = "appsheetgr"  # <-- tu project_id de GCP
+BQ_PROJECT = "appsheetgr"  # tu project_id de GCP
 
 VARIABLES_EFICIENCIA = {
     "disponibilidad": {
@@ -99,28 +95,36 @@ VARIABLES_EFICIENCIA = {
         "decimales": 1,
         "limite_max": None,
         "limite_min": None,
+        # ⚠️ VERIFICAR: si "turno" es texto (ej. "Mañana"/"Tarde") o una fecha
+        # sin hora, los rangos de 1h/6h no van a traer nada por diseño (no
+        # por el desfase horario) — este dato se registra por turno, no de
+        # forma continua. Si es así, quizás esta variable no debería tener
+        # rangos de 1h/6h, sino ver por turno/día.
+        "hora_local": True,
     },
     "consumo_agua_planta": {
         "label": "Consumo Agua Planta",
         "icon": "💧",
         "unit": "m³/h",
-        "table": f"{BQ_PROJECT}.BD_Procesamiento.cba_4_consumos_diarios",   # <-- edita el nombre real
-        "col_valor": "consumo_planta",                                  # <-- edita el nombre real
-        "col_fecha": "fecha_registro",                                    # <-- edita el nombre real
+        "table": f"{BQ_PROJECT}.BD_Procesamiento.cba_4_consumos_diarios",
+        "col_valor": "consumo_planta",
+        "col_fecha": "fecha_registro",
         "decimales": 1,
         "limite_max": None,
         "limite_min": None,
+        "hora_local": True,  # <-- confirma el tipo de columna en el Schema
     },
     "procesamiento_ptar": {
         "label": "Procesamiento PTAR",
         "icon": "🧪",
         "unit": "%",
-        "table": f"{BQ_PROJECT}.BD_Procesamiento.cba_4_consumos_diarios",  # <-- edita el nombre real
-        "col_valor": "procesamient_ptar",                                     # <-- edita el nombre real
-        "col_fecha": "fecha_registro",                                          # <-- edita el nombre real
+        "table": f"{BQ_PROJECT}.BD_Procesamiento.cba_4_consumos_diarios",
+        "col_valor": "procesamient_ptar",
+        "col_fecha": "fecha_registro",
         "decimales": 1,
         "limite_max": 100,
         "limite_min": 70,
+        "hora_local": True,  # <-- confirma el tipo de columna en el Schema
     },
 }
 
@@ -139,16 +143,29 @@ def get_bq_client():
 
 
 @st.cache_data(ttl=REFRESH_SECONDS, show_spinner=False)
-def fetch_variable_data(table: str, col_valor: str, col_fecha: str, horas: int) -> pd.DataFrame:
+def fetch_variable_data(table: str, col_valor: str, col_fecha: str, horas: int,
+                         hora_local: bool = True) -> pd.DataFrame:
     """Una sola consulta trae histórico + dato actual (última fila).
     Cacheada por REFRESH_SECONDS: aunque el fragmento se re-renderice más
     seguido por interacción del usuario, BigQuery solo se consulta una vez
-    por ventana de refresco -> controla costo y latencia."""
+    por ventana de refresco -> controla costo y latencia.
+
+    hora_local=True  -> la columna es DATETIME sin zona horaria, guardada en
+                         hora de Perú (America/Lima). Comparamos contra la
+                         hora "de pared" actual en Lima, no contra UTC.
+                         Evita el desfase de 5h que hacía fallar 1h/6h.
+    hora_local=False -> la columna es TIMESTAMP real en UTC.
+    """
     client = get_bq_client()
+    if hora_local:
+        limite_sql = "DATETIME_SUB(CURRENT_DATETIME('America/Lima'), INTERVAL @horas HOUR)"
+    else:
+        limite_sql = "TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL @horas HOUR)"
+
     query = f"""
         SELECT {col_fecha} AS fecha, {col_valor} AS valor
         FROM `{table}`
-        WHERE {col_fecha} >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL @horas HOUR)
+        WHERE {col_fecha} >= {limite_sql}
         ORDER BY {col_fecha} ASC
     """
     job_config = bigquery.QueryJobConfig(
@@ -557,7 +574,10 @@ def panel_eficiencia_vivo():
 
     # --- Consulta a BigQuery (cacheada por REFRESH_SECONDS) ---
     try:
-        df = fetch_variable_data(conf["table"], conf["col_valor"], conf["col_fecha"], horas)
+        df = fetch_variable_data(
+            conf["table"], conf["col_valor"], conf["col_fecha"], horas,
+            hora_local=conf.get("hora_local", True)
+        )
     except Exception as e:
         st.error(
             "No se pudo consultar BigQuery para esta variable. "
@@ -575,7 +595,16 @@ def panel_eficiencia_vivo():
     anterior = df.iloc[-2]["valor"] if len(df) > 1 else None
     estado = _estado_por_umbral(ultimo["valor"], conf)
 
-    ahora = pd.Timestamp.now(tz=ultimo["fecha"].tz) if ultimo["fecha"].tzinfo else pd.Timestamp.now()
+    # "Ahora" debe calcularse en el mismo marco horario que la columna de fecha,
+    # o el desfase de 5h (Lima = UTC-5) también distorsiona este texto, aunque
+    # aquí solo afecte lo que se muestra, no el filtrado de la consulta.
+    ahora_utc = pd.Timestamp.now(tz="UTC")
+    if conf.get("hora_local", True):
+        # Columna en hora de pared de Lima (sin tz) -> comparamos en el mismo marco.
+        ahora = (ahora_utc - pd.Timedelta(hours=5)).tz_localize(None)
+    else:
+        # Columna TIMESTAMP real en UTC (BigQuery ya la entrega tz-aware).
+        ahora = ahora_utc
     segundos_atras = max(int((ahora - ultimo["fecha"]).total_seconds()), 0)
     hace_txt = f"hace {segundos_atras}s" if segundos_atras < 90 else f"hace {segundos_atras // 60} min"
 
