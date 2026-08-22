@@ -150,15 +150,19 @@ def fetch_variable_data(table: str, col_valor: str, col_fecha: str, horas: int,
     seguido por interacción del usuario, BigQuery solo se consulta una vez
     por ventana de refresco -> controla costo y latencia.
 
-    hora_local=True  -> la columna es DATETIME sin zona horaria, guardada en
-                         hora de Perú (America/Lima). Comparamos contra la
-                         hora "de pared" actual en Lima, no contra UTC.
-                         Evita el desfase de 5h que hacía fallar 1h/6h.
-    hora_local=False -> la columna es TIMESTAMP real en UTC.
+    La columna de fecha es TIMESTAMP (confirmado por el error de tipos).
+
+    hora_local=True  -> el TIMESTAMP guarda hora de pared de Lima aunque el
+                         tipo diga UTC (típico si el pipeline nunca convirtió
+                         la hora local a UTC real). Restamos 5h fijas
+                         (Lima = UTC-5, sin horario de verano) para alinear
+                         el límite de la consulta con esa hora "de pared",
+                         sin cambiar de tipo de dato (sigue siendo TIMESTAMP).
+    hora_local=False -> el TIMESTAMP ya es UTC real, sin ajuste.
     """
     client = get_bq_client()
     if hora_local:
-        limite_sql = "DATETIME_SUB(CURRENT_DATETIME('America/Lima'), INTERVAL @horas HOUR)"
+        limite_sql = "TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL (@horas + 5) HOUR)"
     else:
         limite_sql = "TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL @horas HOUR)"
 
@@ -595,15 +599,16 @@ def panel_eficiencia_vivo():
     anterior = df.iloc[-2]["valor"] if len(df) > 1 else None
     estado = _estado_por_umbral(ultimo["valor"], conf)
 
-    # "Ahora" debe calcularse en el mismo marco horario que la columna de fecha,
-    # o el desfase de 5h (Lima = UTC-5) también distorsiona este texto, aunque
-    # aquí solo afecte lo que se muestra, no el filtrado de la consulta.
+    # "Ahora" debe calcularse en el mismo marco que la columna TIMESTAMP
+    # (que BigQuery/pandas entrega con zona horaria UTC), o el desfase de 5h
+    # (Lima = UTC-5) también distorsiona este texto, aunque aquí solo afecte
+    # lo que se muestra, no el filtrado de la consulta.
     ahora_utc = pd.Timestamp.now(tz="UTC")
     if conf.get("hora_local", True):
-        # Columna en hora de pared de Lima (sin tz) -> comparamos en el mismo marco.
-        ahora = (ahora_utc - pd.Timedelta(hours=5)).tz_localize(None)
+        # El TIMESTAMP guarda hora de pared de Lima mal etiquetada como UTC ->
+        # restamos 5h manteniendo tz-aware, para poder restar contra la columna.
+        ahora = ahora_utc - pd.Timedelta(hours=5)
     else:
-        # Columna TIMESTAMP real en UTC (BigQuery ya la entrega tz-aware).
         ahora = ahora_utc
     segundos_atras = max(int((ahora - ultimo["fecha"]).total_seconds()), 0)
     hace_txt = f"hace {segundos_atras}s" if segundos_atras < 90 else f"hace {segundos_atras // 60} min"
