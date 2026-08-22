@@ -91,7 +91,7 @@ VARIABLES_EFICIENCIA = {
         "unit": "%",
         "table": f"{BQ_PROJECT}.BD_Procesamiento.cba_4_disponibilidad_ptar",
         "col_valor": "porcentaje_operando",
-        "col_fecha": "turno",
+        "col_fecha": "fecha_registro",
         "decimales": 1,
         "limite_max": None,
         "limite_min": None,
