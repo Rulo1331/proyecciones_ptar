@@ -89,7 +89,7 @@ VARIABLES_EFICIENCIA = {
         "label": "Disponibilidad de Planta",
         "icon": "💧",
         "table": f"{BQ_PROJECT}.BD_Procesamiento.cba_4_disponibilidad_ptar",
-        "col_fecha": "fecha_registro",
+        "col_fecha": "turno",
         # ⚠️ VERIFICAR: si "turno" es texto (ej. "Mañana"/"Tarde") o una fecha
         # sin hora, los rangos de 1h/6h no van a traer nada por diseño (no
         # por el desfase horario) — este dato se registra por turno, no de
@@ -100,7 +100,7 @@ VARIABLES_EFICIENCIA = {
         "series": [
             {"col": "porcentaje_operando", "label": "Disponible", "icon": "✅", "color": PALETTE["green"]},
             {"col": "porcentaje_standby",  "label": "Stand By",   "icon": "⏸️", "color": PALETTE["amber"]},  # <-- edita el nombre real
-            {"col": "porcentaje_fallo",    "label": "Falla",      "icon": "🚨", "color": PALETTE["red"]},    # <-- edita el nombre real
+            {"col": "porcentaje_falla",    "label": "Falla",      "icon": "🚨", "color": PALETTE["red"]},    # <-- edita el nombre real
         ],
     },
     "consumo_agua_planta": {
@@ -613,17 +613,21 @@ def panel_disponibilidad_multi(conf: dict, horas: int, rango_label: str):
 
     st.markdown("<div style='height:18px'></div>", unsafe_allow_html=True)
 
-    # --- Gráfico: una línea por serie, mismos colores que las cajas ---
+    # --- Gráfico: barras apiladas al 100%, un color por serie (igual que las cajas) ---
     nombre_por_col = {s["col"]: s["label"] for s in conf["series"]}
     color_por_label = {s["label"]: s["color"] for s in conf["series"]}
+    orden_series = [s["label"] for s in conf["series"]]
     df_largo = df.melt(id_vars="fecha", value_vars=list(columnas),
                         var_name="serie", value_name="valor")
     df_largo["serie"] = df_largo["serie"].map(nombre_por_col)
 
-    fig = px.line(df_largo, x="fecha", y="valor", color="serie", markers=True,
-                  color_discrete_map=color_por_label)
+    fig = px.bar(df_largo, x="fecha", y="valor", color="serie",
+                 barmode="stack", color_discrete_map=color_por_label,
+                 category_orders={"serie": orden_series})
+    fig.update_traces(marker_line_width=0)
     fig.update_layout(height=300, showlegend=True, legend_title=None,
-                       xaxis_title=None, yaxis_title="%")
+                       xaxis_title=None, yaxis_title="%", yaxis_range=[0, 100],
+                       bargap=0.25)
     st.plotly_chart(fig, use_container_width=True, key="chart_disponibilidad")
 
     st.markdown("<div style='height:18px'></div>", unsafe_allow_html=True)
