@@ -585,7 +585,7 @@ def panel_disponibilidad_multi(conf: dict, horas: int, rango_label: str):
         )
     except Exception as e:
         st.error(
-            "No se pudo consultar BigQuery para esta variable. "
+            "No se pudo consultar DB para esta variable. "
             "Revisa que la tabla exista, que las 3 columnas de series existan, "
             "y que las credenciales en Secrets sean correctas."
         )
@@ -693,7 +693,7 @@ def panel_eficiencia_vivo():
         )
     except Exception as e:
         st.error(
-            "No se pudo consultar BigQuery para esta variable. "
+            "No se pudo consultar DB para esta variable. "
             "Revisa que la tabla exista y que las credenciales en Secrets sean correctas."
         )
         st.caption(f"Detalle técnico: {e}")
@@ -752,7 +752,7 @@ def panel_eficiencia_vivo():
 
 
 def vista_eficiencia():
-    render_header("⚖️", "Eficiencia y Operación", "Variables de proceso en tiempo real, desde BigQuery.", status="live")
+    render_header("⚖️", "Eficiencia y Operación", "Variables de proceso en tiempo real.", status="live")
     panel_eficiencia_vivo()
 
 
